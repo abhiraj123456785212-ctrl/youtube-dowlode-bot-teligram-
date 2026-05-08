@@ -4,32 +4,35 @@ import yt_dlp
 import os
 import asyncio
 import time
+from dotenv import load_dotenv
 
-# ---------------- BASIC CONFIG ----------------
-API_ID = 26514816
-API_HASH = "a853e553875a7903bdc49016085825ca"
-BOT_TOKEN = "8583785725:AAER1Uq3RjPJPi1YTObSNaVPcT5JCPnaBV8"
+# ---------------- LOAD ENV ----------------
+load_dotenv()
+
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 DOWNLOAD_DIR = "downloads"
 COOKIES_FILE = "instagram_cookies.txt"
-MAX_CONCURRENT_DOWNLOADS = 1   # ❗ DO NOT CHANGE
+MAX_CONCURRENT_DOWNLOADS = 1
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# ---------------- GLOBALS ----------------
+# ---------------- APP ----------------
 app = Client("downloader", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
 user_links = {}
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-MAIN_LOOP: asyncio.AbstractEventLoop | None = None
+MAIN_LOOP = None
 last_progress_time = {}
 
-# Fix yt-dlp headers
 yt_dlp.utils.std_headers["User-Agent"] = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 )
 
-# ---------------- SAFE PROGRESS ----------------
+# ---------------- PROGRESS ----------------
 async def progress_hook(d, message, user_id):
     if d.get("status") != "downloading":
         return
@@ -54,8 +57,7 @@ async def progress_hook(d, message, user_id):
     except:
         pass
 
-
-# ---------------- BLOCKING yt-dlp (THREAD SAFE) ----------------
+# ---------------- DOWNLOAD ----------------
 def blocking_download(url, fmt, status_msg, user_id):
     def hook(d):
         if MAIN_LOOP:
@@ -77,8 +79,6 @@ def blocking_download(url, fmt, status_msg, user_id):
         path = ydl.prepare_filename(info)
         return path, info.get("title", "Video")
 
-
-# ---------------- ASYNC WRAPPER ----------------
 async def download(url, fmt, status_msg, user_id):
     async with download_semaphore:
         loop = asyncio.get_running_loop()
@@ -91,7 +91,6 @@ async def download(url, fmt, status_msg, user_id):
             user_id,
         )
 
-
 # ---------------- START ----------------
 @app.on_message(filters.command("start"))
 async def start(_, msg):
@@ -100,12 +99,10 @@ async def start(_, msg):
         MAIN_LOOP = asyncio.get_running_loop()
 
     await msg.reply(
-        "👋 **Welcome**\n"
-        "Send **YouTube / Instagram / Facebook** link"
+        "👋 **Welcome**\nSend YouTube / Instagram / Facebook link"
     )
 
-
-# ---------------- LINK HANDLER ----------------
+# ---------------- LINK ----------------
 @app.on_message(filters.text)
 async def handle_link(_, msg):
     url = msg.text.strip()
@@ -134,30 +131,26 @@ async def handle_link(_, msg):
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
-
 # ---------------- CALLBACK ----------------
 @app.on_callback_query()
 async def callback(_, call: CallbackQuery):
     user_id = call.from_user.id
     url = user_links.get(user_id)
+
     if not url:
         return await call.answer("❌ Link expired", show_alert=True)
 
     quality = call.data
-    if quality == "audio":
-        fmt = "bestaudio/best"
-    else:
-        h = int(quality)
-        fmt = f"bestvideo[height<={h}][ext=mp4]+bestaudio/best/best"
+    fmt = "bestaudio/best" if quality == "audio" else f"bestvideo[height<={quality}]+bestaudio/best"
 
-    status = await call.message.reply("⏳ **Starting download...**")
+    status = await call.message.reply("⏳ Starting download...")
 
     try:
         file_path, title = await download(url, fmt, status, user_id)
 
         await call.message.reply_video(
             video=file_path,
-            caption=f"✅ **Done**\n🎬 {title}\n📌 {quality}",
+            caption=f"✅ Done\n🎬 {title}\n📌 {quality}",
         )
 
         await status.delete()
@@ -165,7 +158,6 @@ async def callback(_, call: CallbackQuery):
 
     except Exception as e:
         await status.edit(f"❌ Error:\n`{e}`")
-
 
 # ---------------- RUN ----------------
 app.run()
