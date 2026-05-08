@@ -1,0 +1,14 @@
+# Discord bots
+discord.py>=2.3.2
+PyNaCl>=1.5.0
+python-dotenv>=1.0.0
+
+
+pyrogram==2.0.106
+TgCrypto==1.2.5
+
+# Downloader
+yt-dlp>=2024.12.13
+
+# Voice / TTS
+gTTS
